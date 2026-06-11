@@ -15,6 +15,6 @@ if (is_dir($dir)) {
 // Resetar o arquivo de histórico
 file_put_contents($history_file, json_encode([]));
 
-header('Location: index.php');
+header('Location: index.html');
 exit;
 ?>
