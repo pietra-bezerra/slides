@@ -131,9 +131,38 @@ detector = Detector()
 def video_feed():
     return Response(detector.generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+import glob
+from flask import send_from_directory
+
 @app.route('/status')
 def status():
     return jsonify({"status": "running"})
+
+@app.route('/history')
+def get_history():
+    if os.path.exists(history_file):
+        try:
+            with open(history_file, 'r') as f:
+                return jsonify(json.load(f))
+        except:
+            return jsonify([])
+    return jsonify([])
+
+@app.route('/clear_history', methods=['POST', 'GET'])
+def clear_history():
+    files = glob.glob(os.path.join(OUTPUT_DIR, '*'))
+    for f in files:
+        try:
+            os.remove(f)
+        except:
+            pass
+    with open(history_file, 'w') as f:
+        json.dump([], f)
+    return jsonify({"status": "cleared"})
+
+@app.route('/captures/<path:filename>')
+def serve_capture(filename):
+    return send_from_directory(OUTPUT_DIR, filename)
 
 if __name__ == '__main__':
     # Roda o servidor Flask na porta 5000 acessível a todas as interfaces
