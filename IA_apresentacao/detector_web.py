@@ -1,144 +1,131 @@
 import cv2
-import json
 import time
 import os
-import threading
-from flask import Flask, Response, jsonify
+import json
+from flask import Flask, render_template, Response, jsonify, send_from_directory
 from flask_cors import CORS
 from ultralytics import YOLO
 
-app = Flask(__name__)
-CORS(app)
-
-# Configurações de Otimização
+# Ajuste os caminhos corretamente para o modelo
 MODEL_PATH = os.path.join(os.path.dirname(__file__), 'best.pt')
-CLASSES_MAP = {
-    'oculos-epi': 'COM EPI',
-    'sem_oculos': 'SEM EPI'
-}
-COLORS = {
-    'COM EPI': (0, 255, 0),
-    'SEM EPI': (0, 0, 255)
-}
-
-IMG_SIZE = 640   
-CONF_THRESHOLD = 0.5 
-
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'captures')
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
-history_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'history.json')
+app = Flask(__name__)
+CORS(app)
+
+# Definições do YOLO
+IMG_SIZE = 640
+CONF_THRESHOLD = 0.60
+COLORS = {
+    'Oculos EPI': (0, 255, 0),       # Verde
+    'Oculos Comum': (0, 165, 255),   # Laranja
+    'Sem Oculos': (0, 0, 255)        # Vermelho
+}
+CLASSES_MAP = {
+    'oculos_epi': 'Oculos EPI',
+    'oculos_comum': 'Oculos Comum',
+    'sem_oculos': 'Sem Oculos'
+}
 
 class Detector:
     def __init__(self):
-        print("Iniciando sistema de detecção com Rastreamento Estabilizado...")
         try:
             self.model = YOLO(MODEL_PATH)
         except Exception as e:
-            print(f"Erro ao carregar o modelo: {e}")
+            print(f"Erro ao carregar modelo: {e}")
             self.model = None
 
-        self.cap = None
-        for index in [0]:
-            print(f"Tentando abrir camera {index} (DSHOW)...")
-            cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-            if cap.isOpened():
-                # Tenta ler até 10 frames para esquentar câmeras USB mais lentas
-                for _ in range(10):
-                    ret, _ = cap.read()
-                    if ret: break
-                if ret:
-                    self.cap = cap
-                    break
+        self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
+        if not self.cap:
+            print("Erro: Câmera não encontrada.")
             
-            print(f"Tentando abrir camera {index} (Padrao)...")
-            cap = cv2.VideoCapture(index)
-            if cap.isOpened():
-                for _ in range(10):
-                    ret, _ = cap.read()
-                    if ret: break
-                if ret:
-                    self.cap = cap
-                    break
-
-        if self.cap:
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        self.frame_count = 0
         self.last_save_time = 0
+        self.history_file = os.path.join(os.path.dirname(__file__), 'history.json')
+        self.full_history = self._load_history()
+
+    def _load_history(self):
+        if os.path.exists(self.history_file):
+            try:
+                with open(self.history_file, 'r') as f:
+                    return json.load(f)
+            except:
+                return []
+        return []
+
+    def _save_history(self):
+        self.full_history = self.full_history[:1000]
+        with open(self.history_file, 'w') as f:
+            json.dump(self.full_history, f)
 
     def generate_frames(self):
-        if not self.cap or not self.cap.isOpened() or not self.model:
-            yield b''
-            return
-
         while True:
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-
-            self.frame_count += 1
-            results = self.model.track(frame, persist=True, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)
-
-            detections_found = False
-            new_entries = [] 
-            current_time = time.time()
-            can_save = (current_time - self.last_save_time) >= 3.0
-
-            for result in results:
-                if result.boxes is None: continue
+            if self.cap is None or not self.cap.isOpened():
+                self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+                time.sleep(1) # Espera 1 segundo antes de tentar ler
                 
-                for box in result.boxes:
-                    cls_id = int(box.cls[0])
-                    label = CLASSES_MAP.get(self.model.names[cls_id], self.model.names[cls_id])
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    conf = float(box.conf[0])
-                    color = COLORS.get(label, (255, 255, 255))
+            if self.cap and self.cap.isOpened():
+                ret, frame = self.cap.read()
+                if not ret:
+                    self.cap.release()
+                    time.sleep(1)
+                    continue
+            else:
+                time.sleep(1)
+                continue
 
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                    txt = f"{label} {conf:.2f}"
-                    cv2.putText(frame, txt, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            # Redimensionar via software para a IA processar
+            frame = cv2.resize(frame, (640, 480))
 
-                    if can_save:
+            if self.model:
+                results = self.model.track(frame, persist=True, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)
+                detections_found = False
+                new_entries = []
+                current_time = time.time()
+                can_save = (current_time - self.last_save_time) >= 3.0
+
+                for result in results:
+                    if result.boxes is None: continue
+                    for box in result.boxes:
+                        cls_id = int(box.cls[0])
+                        label = CLASSES_MAP.get(self.model.names[cls_id], self.model.names[cls_id])
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        conf = float(box.conf[0])
+                        color = COLORS.get(label, (255, 255, 255))
+
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                        
+                        # Coloca o texto em cima do quadrado
+                        cv2.putText(frame, f"{label} {conf*100:.0f}%", (x1, max(y1 - 10, 0)), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
                         detections_found = True
-                        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-                        img_name = f"det_{timestamp_str}_{self.frame_count}.jpg"
-                        img_path = os.path.join(OUTPUT_DIR, img_name)
-                        cv2.imwrite(img_path, frame)
+                        if can_save:
+                            timestamp = time.strftime("%Y%m%d_%H%M%S")
+                            # Remove acentos para salvar no arquivo
+                            clean_label = label.replace('Ó', 'O').replace(' ', '_').lower()
+                            filename = f"demo_{clean_label}_seg{conf*100:.0f}_{timestamp}.jpg"
+                            filepath = os.path.join(OUTPUT_DIR, filename)
+                            cv2.imwrite(filepath, frame)
+                            
+                            new_entries.append({
+                                "tipo": label.replace('_', ' ').title(),
+                                "data": time.strftime("%d/%m/%Y"),
+                                "hora": time.strftime("%H:%M:%S"),
+                                "confianca": f"{conf*100:.0f}%",
+                                "imagem": filename
+                            })
 
-                        new_entry = {
-                            "class": label,
-                            "confidence": conf,
-                            "timestamp": time.strftime("%H:%M:%S"),
-                            "image": f"captures/{img_name}"
-                        }
-                        new_entries.append(new_entry)
-            
-            if detections_found:
-                self.last_save_time = current_time 
-                if os.path.exists(history_file):
-                    try:
-                        with open(history_file, 'r') as f:
-                            current_history = json.load(f)
-                    except:
-                        current_history = []
-                else:
-                    current_history = []
+                if detections_found and can_save:
+                    self.last_save_time = current_time
+                    for entry in new_entries:
+                        self.full_history.insert(0, entry)
+                    self._save_history()
 
-                for entry in new_entries:
-                    current_history.insert(0, entry)
-                
-                current_history = current_history[:1000] 
-                with open(history_file, 'w') as f:
-                    json.dump(current_history, f)
-
-            # Codificar o frame em JPEG
             ret, buffer = cv2.imencode('.jpg', frame)
             frame_bytes = buffer.tobytes()
-
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
@@ -148,39 +135,24 @@ detector = Detector()
 def video_feed():
     return Response(detector.generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-import glob
-from flask import send_from_directory
-
-@app.route('/status')
-def status():
-    return jsonify({"status": "running"})
-
 @app.route('/history')
-def get_history():
-    if os.path.exists(history_file):
-        try:
-            with open(history_file, 'r') as f:
-                return jsonify(json.load(f))
-        except:
-            return jsonify([])
-    return jsonify([])
-
-@app.route('/clear_history', methods=['POST', 'GET'])
-def clear_history():
-    files = glob.glob(os.path.join(OUTPUT_DIR, '*'))
-    for f in files:
-        try:
-            os.remove(f)
-        except:
-            pass
-    with open(history_file, 'w') as f:
-        json.dump([], f)
-    return jsonify({"status": "cleared"})
+def history():
+    return jsonify(detector._load_history())
 
 @app.route('/captures/<path:filename>')
 def serve_capture(filename):
     return send_from_directory(OUTPUT_DIR, filename)
 
-if __name__ == '__main__':
-    # Roda o servidor Flask na porta 5000 acessível a todas as interfaces
+@app.route('/clear_history')
+def clear_history():
+    detector.full_history = []
+    detector._save_history()
+    # Remove files
+    for f in os.listdir(OUTPUT_DIR):
+        if f.endswith('.jpg'):
+            try: os.remove(os.path.join(OUTPUT_DIR, f))
+            except: pass
+    return jsonify({"status": "success"})
+
+if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, threaded=True)

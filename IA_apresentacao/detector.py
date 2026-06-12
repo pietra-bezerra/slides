@@ -6,13 +6,15 @@ from ultralytics import YOLO
 
 # Configurações de Otimização
 MODEL_PATH = os.path.join(os.path.dirname(__file__), 'best.pt')
-CLASSES_MAP = {
-    'oculos-epi': 'COM EPI',
-    'sem_oculos': 'SEM EPI'
-}
 COLORS = {
-    'COM EPI': (0, 255, 0),
-    'SEM EPI': (0, 0, 255)
+    'Oculos EPI': (0, 255, 0),       # Verde
+    'Oculos Comum': (0, 165, 255),   # Laranja
+    'Sem Oculos': (0, 0, 255)        # Vermelho
+}
+CLASSES_MAP = {
+    'oculos_epi': 'Oculos EPI',
+    'oculos_comum': 'Oculos Comum',
+    'sem_oculos': 'Sem Oculos'
 }
 
 # Parâmetros de Performance (Equilíbrio Fluidez/Precisão)
@@ -34,28 +36,14 @@ def main():
         return
 
     # Tentar abrir a câmera em diferentes índices e backends
-    cap = None
-    for index in [0]:
-        print(f"Tentando abrir camera {index} (DSHOW)...")
-        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-        if cap.isOpened():
-            # Tenta ler um frame para garantir que a câmera funciona
-            ret, _ = cap.read()
-            if ret: break
-            
-        print(f"Tentando abrir camera {index} (Padrao)...")
-        cap = cv2.VideoCapture(index)
-        if cap.isOpened():
-            ret, _ = cap.read()
-            if ret: break
+    # Conectar usando apenas DSHOW (mais estável para webcams UVC nativas)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     
-    if cap is None or not cap.isOpened():
+    if not cap.isOpened():
         print("Erro: Nenhuma câmera disponível foi encontrada.")
         return
 
     # Configurações para mínima latência
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     frame_count = 0
@@ -75,7 +63,11 @@ def main():
 
     while True:
         ret, frame = cap.read()
-        if not ret: break
+        if not ret:
+            break
+            
+        # Redimensionar via software para a IA processar
+        frame = cv2.resize(frame, (640, 480))
 
         frame_count += 1
         
@@ -100,19 +92,20 @@ def main():
                 conf = float(box.conf[0])
                 color = COLORS.get(label, (255, 255, 255))
 
-                # Desenhar caixa mais suave e fina para não "poluir" o rosto
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 
-                # Label estilizado
-                txt = f"{label} {conf:.2f}"
-                cv2.putText(frame, txt, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                # Coloca o texto em cima do quadrado na janela solta
+                cv2.putText(frame, f"{label} {conf*100:.0f}%", (x1, max(y1 - 10, 0)), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-                if can_save:
+                if label in ['Oculos Comum', 'Sem Oculos']:
                     detections_found = True
-                    timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-                    img_name = f"det_{timestamp_str}_{frame_count}.jpg"
-                    img_path = os.path.join(OUTPUT_DIR, img_name)
-                    cv2.imwrite(img_path, frame)
+                    if can_save:
+                        timestamp = time.strftime("%Y%m%d_%H%M%S")
+                        clean_label = label.replace('Ó', 'O').replace(' ', '_').lower()
+                        filename = f"det_{clean_label}_{timestamp}_{frame_count}.jpg"
+                        filepath = os.path.join(OUTPUT_DIR, filename)
+                        cv2.imwrite(filepath, frame)
 
                     new_entry = {
                         "class": label,

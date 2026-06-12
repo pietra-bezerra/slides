@@ -94,16 +94,16 @@
                 }
 
                 recordsToShow.forEach(det => {
-                    const isCom = det.class === 'COM EPI';
+                    const isCom = det.tipo === 'Oculos EPI';
                     html += `
                         <tr class="${!isCom ? 'infraction-row' : ''}">
-                            <td><img src="http://127.0.0.1:5000/${det.image}" class="thumbnail" onclick="openModal('http://127.0.0.1:5000/${det.image}', ${!isCom})"></td>
-                            <td>${det.timestamp}</td>
-                            <td><strong>${det.class}</strong></td>
-                            <td>${(det.confidence * 100).toFixed(1)}%</td>
+                            <td><img src="http://127.0.0.1:5000/captures/${det.imagem}" class="thumbnail" onclick="openModal('http://127.0.0.1:5000/captures/${det.imagem}', ${!isCom})"></td>
+                            <td>${det.data} às ${det.hora}</td>
+                            <td><span class="badge ${isCom ? 'badge-ok' : 'badge-alert'}">${det.tipo}</span></td>
+                            <td>${det.confianca}</td>
                             <td>
                                 <span class="badge ${isCom ? 'badge-com' : 'badge-sem'}">
-                                    ${isCom ? 'Protegido' : 'Em Risco'}
+                                    <span class="dot"></span>${isCom ? 'Protegido' : 'Em Risco'}
                                 </span>
                             </td>
                         </tr>
