@@ -25,7 +25,7 @@
                     </div>
                 </div>
                 <div style="display: flex; gap: 1rem;">
-                    <button class="theme-toggle" style="background: rgba(227, 28, 37, 0.1); color: #E31C25; border-color: #E31C25;" onclick="if(confirm('Deseja apagar todas as fotos e o histórico?')) fetch('http://localhost:5000/clear_history').then(() => fetchHistory())">🗑️ Limpar Histórico</button>
+                    <button class="theme-toggle" style="background: rgba(227, 28, 37, 0.1); color: #E31C25; border-color: #E31C25;" onclick="if(confirm('Deseja apagar todas as fotos e o histórico?')) fetch('http://127.0.0.1:5000/clear_history').then(() => fetchHistory())">🗑️ Limpar Histórico</button>
                 </div>
             </div>
             <table>
@@ -76,7 +76,7 @@
 
         async function fetchHistory() {
             try {
-                const response = await fetch('http://localhost:5000/history?' + new Date().getTime());
+                const response = await fetch('http://127.0.0.1:5000/history?' + new Date().getTime());
                 if (!response.ok) return;
                 
                 const data = await response.json();
@@ -97,7 +97,7 @@
                     const isCom = det.class === 'COM EPI';
                     html += `
                         <tr class="${!isCom ? 'infraction-row' : ''}">
-                            <td><img src="http://localhost:5000/${det.image}" class="thumbnail" onclick="openModal('http://localhost:5000/${det.image}', ${!isCom})"></td>
+                            <td><img src="http://127.0.0.1:5000/${det.image}" class="thumbnail" onclick="openModal('http://127.0.0.1:5000/${det.image}', ${!isCom})"></td>
                             <td>${det.timestamp}</td>
                             <td><strong>${det.class}</strong></td>
                             <td>${(det.confidence * 100).toFixed(1)}%</td>

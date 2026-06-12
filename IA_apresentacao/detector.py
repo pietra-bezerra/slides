@@ -35,12 +35,19 @@ def main():
 
     # Tentar abrir a câmera em diferentes índices e backends
     cap = None
-    for index in [0, 1]:
-        print(f"Tentando abrir camera {index}...")
-        cap = cv2.VideoCapture(index) # Tenta padrão primeiro
-        if cap.isOpened(): break
-        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW) # Tenta DSHOW como alternativa
-        if cap.isOpened(): break
+    for index in [0]:
+        print(f"Tentando abrir camera {index} (DSHOW)...")
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            # Tenta ler um frame para garantir que a câmera funciona
+            ret, _ = cap.read()
+            if ret: break
+            
+        print(f"Tentando abrir camera {index} (Padrao)...")
+        cap = cv2.VideoCapture(index)
+        if cap.isOpened():
+            ret, _ = cap.read()
+            if ret: break
     
     if cap is None or not cap.isOpened():
         print("Erro: Nenhuma câmera disponível foi encontrada.")

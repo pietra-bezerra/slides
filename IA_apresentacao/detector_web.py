@@ -40,10 +40,27 @@ class Detector:
             self.model = None
 
         self.cap = None
-        self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-        if not self.cap.isOpened():
-            print("Tentando backend padrão...")
-            self.cap = cv2.VideoCapture(0)
+        for index in [0]:
+            print(f"Tentando abrir camera {index} (DSHOW)...")
+            cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                # Tenta ler até 10 frames para esquentar câmeras USB mais lentas
+                for _ in range(10):
+                    ret, _ = cap.read()
+                    if ret: break
+                if ret:
+                    self.cap = cap
+                    break
+            
+            print(f"Tentando abrir camera {index} (Padrao)...")
+            cap = cv2.VideoCapture(index)
+            if cap.isOpened():
+                for _ in range(10):
+                    ret, _ = cap.read()
+                    if ret: break
+                if ret:
+                    self.cap = cap
+                    break
 
         if self.cap:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
