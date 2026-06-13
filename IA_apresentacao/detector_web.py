@@ -30,6 +30,27 @@ CLASSES_MAP = {
 }
 
 class Detector:
+    def _find_camera(self):
+        for i in range(10):
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    print(f"Câmera funcional encontrada no índice {i} (DSHOW)")
+                    return cap
+            cap.release()
+        
+        for i in range(10):
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    print(f"Câmera funcional encontrada no índice {i} (Padrão)")
+                    return cap
+            cap.release()
+            
+        return None
+
     def __init__(self):
         try:
             self.model = YOLO(MODEL_PATH)
@@ -37,9 +58,9 @@ class Detector:
             print(f"Erro ao carregar modelo: {e}")
             self.model = None
 
-        self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        self.cap = self._find_camera()
 
-        if not self.cap:
+        if not self.cap or not self.cap.isOpened():
             print("Erro: Câmera não encontrada.")
             
         self.last_save_time = 0
@@ -63,7 +84,7 @@ class Detector:
     def generate_frames(self):
         while True:
             if self.cap is None or not self.cap.isOpened():
-                self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+                self.cap = self._find_camera()
                 time.sleep(1) # Espera 1 segundo antes de tentar ler
                 
             if self.cap and self.cap.isOpened():

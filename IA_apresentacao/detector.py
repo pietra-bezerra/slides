@@ -36,10 +36,29 @@ def main():
         return
 
     # Tentar abrir a câmera em diferentes índices e backends
-    # Conectar usando apenas DSHOW (mais estável para webcams UVC nativas)
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    
-    if not cap.isOpened():
+    cap = None
+    for i in range(10):
+        temp_cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+        if temp_cap.isOpened():
+            ret, frame = temp_cap.read()
+            if ret and frame is not None:
+                print(f"Câmera encontrada no índice {i} (DSHOW)")
+                cap = temp_cap
+                break
+        temp_cap.release()
+        
+    if cap is None:
+        for i in range(10):
+            temp_cap = cv2.VideoCapture(i)
+            if temp_cap.isOpened():
+                ret, frame = temp_cap.read()
+                if ret and frame is not None:
+                    print(f"Câmera encontrada no índice {i} (Padrão)")
+                    cap = temp_cap
+                    break
+            temp_cap.release()
+
+    if cap is None or not cap.isOpened():
         print("Erro: Nenhuma câmera disponível foi encontrada.")
         return
 
@@ -100,18 +119,19 @@ def main():
 
                 if label in ['Oculos Comum', 'Sem Oculos']:
                     detections_found = True
+                    img_name = ""
                     if can_save:
                         timestamp = time.strftime("%Y%m%d_%H%M%S")
                         clean_label = label.replace('Ó', 'O').replace(' ', '_').lower()
-                        filename = f"det_{clean_label}_{timestamp}_{frame_count}.jpg"
-                        filepath = os.path.join(OUTPUT_DIR, filename)
+                        img_name = f"det_{clean_label}_{timestamp}_{frame_count}.jpg"
+                        filepath = os.path.join(OUTPUT_DIR, img_name)
                         cv2.imwrite(filepath, frame)
 
                     new_entry = {
                         "class": label,
                         "confidence": conf,
                         "timestamp": time.strftime("%H:%M:%S"),
-                        "image": f"captures/{img_name}"
+                        "image": f"captures/{img_name}" if img_name else ""
                     }
                     new_entries.append(new_entry)
         
